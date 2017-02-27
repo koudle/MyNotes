@@ -1,8 +1,8 @@
 ---
 title: TensorFlow
-categories: TensorFlow
+categories: TensorFlow,Android
 tags: TensorFlow,Android
 ---
 
-本篇 讲一讲TensorFlow在Android上的应用深圳
+本篇讲一讲TensorFlow如何集成在Android上使用
 ## TensorFlow在Android上的应用
