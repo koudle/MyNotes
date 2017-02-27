@@ -1,7 +1,7 @@
 ---
-title: Java I/O
-categories: Java
-tags: Java
+title: Java I/O 系列第一篇
+categories: Java,I/O
+tags: Java,I/O
 ---
 ## 1.前言
 讲一讲Java I/O的一些事情。因为I/O问题很容易出现性能瓶颈，但我们在具体的开发过程中，却很少涉及到I/O之类的操作,那是因为涉及到的大部分I/O操作都被封装了起来，不被我们所感知，如：
