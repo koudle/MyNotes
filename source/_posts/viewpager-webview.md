@@ -69,6 +69,7 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
         }
 
         boolean handled = false;
+        //这里有一个方法 onFilterTouchEventForSecurity，是用来做安全校验的，通过校验true，则开始分发事件，否则将直接返回，看下面的具体代码
         if (onFilterTouchEventForSecurity(ev)) {
         //获取当前事件的action
             final int action = ev.getAction();
@@ -91,6 +92,8 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
             final boolean intercepted;
             if (actionMasked == MotionEvent.ACTION_DOWN
                     || mFirstTouchTarget != null) {
+                    //这里有一个flag，是通过requestDisallowInterceptTouchEvent来设置的，如果不拦截，则分发事件，否则自己处理，这里有点绕，详细解释下
+                    //首先，(mGroupFlags & FLAG_DISALLOW_INTERCEPT) ，因为是&操作，如果结果不等于0,则disallowIntercept为true，代表有FLAG_DISALLOW_INTERCEPT这个设置，这个viewgroup不执行onInterceptTouchEvent方法，对事件进行分发
                 final boolean disallowIntercept = (mGroupFlags & FLAG_DISALLOW_INTERCEPT) != 0;
                 if (!disallowIntercept) {
                     intercepted = onInterceptTouchEvent(ev);
@@ -106,6 +109,7 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
 
             // If intercepted, start normal event dispatch. Also if there is already
             // a view that is handling the gesture, do normal event dispatch.
+            //这里intercepted如果为true，表示事件已经被viewgroup拦截，viewgroup会自己消费事件，如果为false，表示viewgroup暂时不消费此事件，需要对事件进行分发
             if (intercepted || mFirstTouchTarget != null) {
                 ev.setTargetAccessibilityFocus(false);
             }
@@ -118,6 +122,7 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
             final boolean split = (mGroupFlags & FLAG_SPLIT_MOTION_EVENTS) != 0;
             TouchTarget newTouchTarget = null;
             boolean alreadyDispatchedToNewTouchTarget = false;
+            //这里如果canceld和intercept都为false，才会分发事件
             if (!canceled && !intercepted) {
 
                 // If the event is targeting accessiiblity focus we give it to the
@@ -128,6 +133,7 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
                 View childWithAccessibilityFocus = ev.isTargetAccessibilityFocus()
                         ? findChildWithAccessibilityFocus() : null;
 
+		//这里actionMasked如果符合这些条件
                 if (actionMasked == MotionEvent.ACTION_DOWN
                         || (split && actionMasked == MotionEvent.ACTION_POINTER_DOWN)
                         || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
@@ -139,16 +145,21 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
                     // have become out of sync.
                     removePointersFromTouchTargets(idBitsToAssign);
 
+			//mChildrenCount是全局变量，会记录viewgroup里子view的数量
                     final int childrenCount = mChildrenCount;
+                    //从前面看到newTouchTarget为前面几行定义的局部变量，且初始值为null，所以这里只要childrenCount不为0,一定会走下面的逻辑，如果childrenCount为0,则viewgroup子view为0,也就不需要分发事件了
                     if (newTouchTarget == null && childrenCount != 0) {
                         final float x = ev.getX(actionIndex);
                         final float y = ev.getY(actionIndex);
                         // Find a child that can receive the event.
                         // Scan children from front to back.
+                        //buildOrderedChildList这个方法会把viewgroup的所有子view按照前后顺序排序，以便决定接收事件的顺序
                         final ArrayList<View> preorderedList = buildOrderedChildList();
                         final boolean customOrder = preorderedList == null
                                 && isChildrenDrawingOrderEnabled();
+                                //mChildren为全局变量，储存viewgroup的子view
                         final View[] children = mChildren;
+                        //遍历子view
                         for (int i = childrenCount - 1; i >= 0; i--) {
                             final int childIndex = customOrder
                                     ? getChildDrawingOrder(childrenCount, i) : i;
@@ -182,6 +193,7 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
                             }
 
                             resetCancelNextUpFlag(child);
+                            //dispatchTransformedTouchEvent就是分发事件的函数，我们可以往下看它具体的代码，这里如果返回true，则代表有子view消费了此次事件，那么分发到此为止，如果为false，则继续分发
                             if (dispatchTransformedTouchEvent(ev, false, child, idBitsToAssign)) {
                                 // Child wants to receive touch within its bounds.
                                 mLastTouchDownTime = ev.getDownTime();
@@ -223,8 +235,11 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
             }
 
             // Dispatch to touch targets.
+            //mFirstTouchTarget是viewgroup可接受事件的子view的缓存
             if (mFirstTouchTarget == null) {
                 // No touch targets so treat this as an ordinary view.
+                 //mFirstTouchTarget为null，代表没有可接受事件的子view
+                //所以dispatchTransformedTouchEvent中child的变量为null，意思是自己来消费事件
                 handled = dispatchTransformedTouchEvent(ev, canceled, null,
                         TouchTarget.ALL_POINTER_IDS);
             } else {
@@ -274,6 +289,142 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
         if (!handled && mInputEventConsistencyVerifier != null) {
             mInputEventConsistencyVerifier.onUnhandledEvent(ev, 1);
         }
+        //handled的值为dispatchTransformedTouchEvent的值，也就是onDispatchTouchEvent的值，也就是onTouchEvent的值，handled的初始值为false，
         return handled;
     }
 ```
+
+
+`onFilterTouchEventForSecurity`
+```
+根据这个方法的注释，很容易理解这个方法的含义
+/**
+     * Filter the touch event to apply security policies.
+     *
+     * @param event The motion event to be filtered.
+     * @return True if the event should be dispatched, false if the event should be dropped.
+     *
+     * @see #getFilterTouchesWhenObscured
+     */
+    public boolean onFilterTouchEventForSecurity(MotionEvent event) {
+        //noinspection RedundantIfStatement
+        if ((mViewFlags & FILTER_TOUCHES_WHEN_OBSCURED) != 0
+                && (event.getFlags() & MotionEvent.FLAG_WINDOW_IS_OBSCURED) != 0) {
+            // Window is obscured, drop this touch.
+            return false;
+        }
+        return true;
+    }
+```
+`requestDisallowInterceptTouchEvent`
+```
+/**
+     * {@inheritDoc}
+     */
+    public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {
+
+        if (disallowIntercept == ((mGroupFlags & FLAG_DISALLOW_INTERCEPT) != 0)) {
+            // We're already in this state, assume our ancestors are too
+            return;
+        }
+
+        if (disallowIntercept) {
+            mGroupFlags |= FLAG_DISALLOW_INTERCEPT;
+        } else {
+            mGroupFlags &= ~FLAG_DISALLOW_INTERCEPT;
+        }
+
+        // Pass it up to our parent
+        if (mParent != null) {
+            mParent.requestDisallowInterceptTouchEvent(disallowIntercept);
+        }
+    }
+
+```
+
+`dispatchTransformedTouchEvent`
+```
+/**
+     * Transforms a motion event into the coordinate space of a particular child view,
+     * filters out irrelevant pointer ids, and overrides its action if necessary.
+     * If child is null, assumes the MotionEvent will be sent to this ViewGroup instead.
+     */
+    private boolean dispatchTransformedTouchEvent(MotionEvent event, boolean cancel,
+            View child, int desiredPointerIdBits) {
+        final boolean handled;
+
+        // Canceling motions is a special case.  We don't need to perform any transformations
+        // or filtering.  The important part is the action, not the contents.
+        //看注释，就是这是处理特殊case的代码
+        final int oldAction = event.getAction();
+        if (cancel || oldAction == MotionEvent.ACTION_CANCEL) {
+            event.setAction(MotionEvent.ACTION_CANCEL);
+            if (child == null) {
+                handled = super.dispatchTouchEvent(event);
+            } else {
+                handled = child.dispatchTouchEvent(event);
+            }
+            event.setAction(oldAction);
+            return handled;
+        }
+
+        // Calculate the number of pointers to deliver.
+        final int oldPointerIdBits = event.getPointerIdBits();
+        final int newPointerIdBits = oldPointerIdBits & desiredPointerIdBits;
+
+        // If for some reason we ended up in an inconsistent state where it looks like we
+        // might produce a motion event with no pointers in it, then drop the event.
+        if (newPointerIdBits == 0) {
+            return false;
+        }
+
+        // If the number of pointers is the same and we don't need to perform any fancy
+        // irreversible transformations, then we can reuse the motion event for this
+        // dispatch as long as we are careful to revert any changes we make.
+        // Otherwise we need to make a copy.
+        final MotionEvent transformedEvent;
+        //这个才是重点
+        if (newPointerIdBits == oldPointerIdBits) {
+            if (child == null || child.hasIdentityMatrix()) {
+                if (child == null) {
+                //这里child为null，其实代表的是viewgroup自己，而viewgroup的父类为view，所以这里的 super.dispatchTouchEvent(event)，意思就是调用viewgroup自己的dispatchTouchEvent，因为view没有onInterceptTouchEvent，进而调用自己的onTouchEvent，其实就是自己消费这次事件
+                    handled = super.dispatchTouchEvent(event);
+                } else {
+                    final float offsetX = mScrollX - child.mLeft;
+                    final float offsetY = mScrollY - child.mTop;
+                    event.offsetLocation(offsetX, offsetY);
+		//chile不为null的话，就是调用子view 的dispatchTouchEvent事件，就是分发事件给子view
+                    handled = child.dispatchTouchEvent(event);
+
+                    event.offsetLocation(-offsetX, -offsetY);
+                }
+                return handled;
+            }
+            transformedEvent = MotionEvent.obtain(event);
+        } else {
+            transformedEvent = event.split(newPointerIdBits);
+        }
+	
+	//这里和上面同理
+        // Perform any necessary transformations and dispatch.
+        if (child == null) {
+            handled = super.dispatchTouchEvent(transformedEvent);
+        } else {
+            final float offsetX = mScrollX - child.mLeft;
+            final float offsetY = mScrollY - child.mTop;
+            transformedEvent.offsetLocation(offsetX, offsetY);
+            if (! child.hasIdentityMatrix()) {
+                transformedEvent.transform(child.getInverseMatrix());
+            }
+
+            handled = child.dispatchTouchEvent(transformedEvent);
+        }
+
+        // Done.
+        transformedEvent.recycle();
+        //handled的值为调用dispatchTouchEvent的值，后面会看到这个值其实是OnTouchEvent的值
+        return handled;
+    }
+```
+
+### View
