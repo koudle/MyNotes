@@ -52,7 +52,7 @@ InfiniteData
 第一部分讲到这就结束了，因为我们都知道Activity的最外层包裹的是DecorView，DecoreView里面在包裹我们自己定义实现的Activity的view，而DecoreView继承自FrameLayout，本质上也是一个view，所以总结来说就是Activity获得了事件，随即就抛给了view来处理。
 
 ## ViewGroup
-这里就进入到递归的主要逻辑里面，只要把这里搞懂，那其实就是搞懂了事件的传递机制，同样从代码入手，从上面第一节我们知道Activity里面的事件最后调用的是ViewGroup的dispatchTouchEvent事件，所以我们从ViewGroup 的dispatchTouchEvent看起，这里代码很多，我们一行一行来分析
+这里就进入到递归的主要逻辑里面，只要把这里搞懂，就搞懂了事件的传递机制，同样从代码入手，从上面第一节我们知道Activity里面的事件最后调用的是ViewGroup的dispatchTouchEvent事件，所以我们从ViewGroup 的dispatchTouchEvent看起，这里代码很多，我们一行一行来分析
 `dispatchTouchEvent`
 
 ```
@@ -427,4 +427,243 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
     }
 ```
 
+* 总结
+我们会看到这里有三百多行代码，逻辑非常复杂，但是我们剔除一些不必要的干扰项，其实逻辑还是很清晰的
+
+* 1、第一步，首先，对down事件进行处理，清除上次缓存的状态，在down事件里判断viewgroup是否要拦截事件，首先判断标志位FLAG_DISALLOW_INTERCEPT，``有这个标志位表示不允许拦截``，则直接进行第二步事件的分发；``没有标志未表示允许拦截``，则先调用当前viewgroup的onInterceptTouchEvent，根据onInterceptTouchEvent的值，``如果为true``，表示当前viewgroup要消费这个事件，则执行第三步，即执行该viewgroup的onTouchEvent事件;``如果为false``，则表示当前viewgroup不消费此事件，则执行第二步，对该事件进行分发。
+
+* 2、第二步，要对事件进行分发，如果viewgroup有子view，则按照z-order顺序分发事件，首先判断事件的坐标在不在这个view里面，若是才执行子view的dispatchTouchEvent的方法，``若这个方法返回值为true``，就是有子view消费了此事件，则继续遍历（这里虽然用链表来存储接受事件的view，但是这个view每次应该只有一个，因为同一个事件只能一个view来消费，这里还需探讨？），返回true;``若这个方法返回值为false``，则一直遍历完所有的子view，最后返回false。
+
+* 3、
+
 ### View
+view这里的代码就少很多
+`dispatchTouchEvent`
+
+```
+/**
+     * Pass the touch screen motion event down to the target view, or this
+     * view if it is the target.
+     *
+     * @param event The motion event to be dispatched.
+     * @return True if the event was handled by the view, false otherwise.
+     */
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        // If the event should be handled by accessibility focus first.
+        if (event.isTargetAccessibilityFocus()) {
+            // We don't have focus or no virtual descendant has it, do not handle the event.
+            if (!isAccessibilityFocusedViewOrHost()) {
+                return false;
+            }
+            // We have focus and got the event, then use normal event dispatch.
+            event.setTargetAccessibilityFocus(false);
+        }
+
+        boolean result = false;
+
+        if (mInputEventConsistencyVerifier != null) {
+            mInputEventConsistencyVerifier.onTouchEvent(event, 0);
+        }
+
+        final int actionMasked = event.getActionMasked();
+        if (actionMasked == MotionEvent.ACTION_DOWN) {
+            // Defensive cleanup for new gesture
+            stopNestedScroll();
+        }
+
+//这里和viewgroup的一样
+        if (onFilterTouchEventForSecurity(event)) {
+            if ((mViewFlags & ENABLED_MASK) == ENABLED && handleScrollBarDragging(event)) {
+                result = true;
+            }
+            //noinspection SimplifiableIfStatement
+            //如果有设置onTouchListener，则执行，且返回结果标记为true，代表事件已消费
+            ListenerInfo li = mListenerInfo;
+            if (li != null && li.mOnTouchListener != null
+                    && (mViewFlags & ENABLED_MASK) == ENABLED
+                    && li.mOnTouchListener.onTouch(this, event)) {
+                result = true;
+            }
+
+//没有执行上面的onTouchListener，才会执行onTouchEvent
+            if (!result && onTouchEvent(event)) {
+                result = true;
+            }
+        }
+
+        if (!result && mInputEventConsistencyVerifier != null) {
+            mInputEventConsistencyVerifier.onUnhandledEvent(event, 0);
+        }
+
+        // Clean up after nested scrolls if this is the end of a gesture;
+        // also cancel it if we tried an ACTION_DOWN but we didn't want the rest
+        // of the gesture.
+        if (actionMasked == MotionEvent.ACTION_UP ||
+                actionMasked == MotionEvent.ACTION_CANCEL ||
+                (actionMasked == MotionEvent.ACTION_DOWN && !result)) {
+            stopNestedScroll();
+        }
+
+        return result;
+    }
+```
+
+`onTouchEvent`
+
+```
+ /**
+     * Implement this method to handle touch screen motion events.
+     * <p>
+     * If this method is used to detect click actions, it is recommended that
+     * the actions be performed by implementing and calling
+     * {@link #performClick()}. This will ensure consistent system behavior,
+     * including:
+     * <ul>
+     * <li>obeying click sound preferences
+     * <li>dispatching OnClickListener calls
+     * <li>handling {@link AccessibilityNodeInfo#ACTION_CLICK ACTION_CLICK} when
+     * accessibility features are enabled
+     * </ul>
+     *
+     * @param event The motion event.
+     * @return True if the event was handled, false otherwise.
+     */
+    public boolean onTouchEvent(MotionEvent event) {
+        final float x = event.getX();
+        final float y = event.getY();
+        final int viewFlags = mViewFlags;
+        final int action = event.getAction();
+
+        if ((viewFlags & ENABLED_MASK) == DISABLED) {
+            if (action == MotionEvent.ACTION_UP && (mPrivateFlags & PFLAG_PRESSED) != 0) {
+                setPressed(false);
+            }
+            // A disabled view that is clickable still consumes the touch
+            // events, it just doesn't respond to them.
+            return (((viewFlags & CLICKABLE) == CLICKABLE
+                    || (viewFlags & LONG_CLICKABLE) == LONG_CLICKABLE)
+                    || (viewFlags & CONTEXT_CLICKABLE) == CONTEXT_CLICKABLE);
+        }
+        if (mTouchDelegate != null) {
+            if (mTouchDelegate.onTouchEvent(event)) {
+                return true;
+            }
+        }
+
+	//这里要注意只要这个view设置了 CLICKABLE  LONG_CLICKABLE CONTEXT_CLICKABLE这三个属相，那么返回的结果必然为true，而我们一般用到的view绝大部分默认都是设置了的（因为大部分view默认都是可以接受事件的除了View）
+        if (((viewFlags & CLICKABLE) == CLICKABLE ||
+                (viewFlags & LONG_CLICKABLE) == LONG_CLICKABLE) ||
+                (viewFlags & CONTEXT_CLICKABLE) == CONTEXT_CLICKABLE) {
+            switch (action) {
+                case MotionEvent.ACTION_UP:
+                    boolean prepressed = (mPrivateFlags & PFLAG_PREPRESSED) != 0;
+                    if ((mPrivateFlags & PFLAG_PRESSED) != 0 || prepressed) {
+                        // take focus if we don't have it already and we should in
+                        // touch mode.
+                        boolean focusTaken = false;
+                        if (isFocusable() && isFocusableInTouchMode() && !isFocused()) {
+                            focusTaken = requestFocus();
+                        }
+
+                        if (prepressed) {
+                            // The button is being released before we actually
+                            // showed it as pressed.  Make it show the pressed
+                            // state now (before scheduling the click) to ensure
+                            // the user sees it.
+                            setPressed(true, x, y);
+                       }
+
+                        if (!mHasPerformedLongPress && !mIgnoreNextUpEvent) {
+                            // This is a tap, so remove the longpress check
+                            removeLongPressCallback();
+
+                            // Only perform take click actions if we were in the pressed state
+                            if (!focusTaken) {
+                                // Use a Runnable and post this rather than calling
+                                // performClick directly. This lets other visual state
+                                // of the view update before click actions start.
+                                if (mPerformClick == null) {
+                                    mPerformClick = new PerformClick();
+                                }
+                                if (!post(mPerformClick)) {
+                                    performClick();
+                                }
+                            }
+                        }
+
+                        if (mUnsetPressedState == null) {
+                            mUnsetPressedState = new UnsetPressedState();
+                        }
+
+                        if (prepressed) {
+                            postDelayed(mUnsetPressedState,
+                                    ViewConfiguration.getPressedStateDuration());
+                        } else if (!post(mUnsetPressedState)) {
+                            // If the post failed, unpress right now
+                            mUnsetPressedState.run();
+                        }
+
+                        removeTapCallback();
+                    }
+                    mIgnoreNextUpEvent = false;
+                    break;
+
+                case MotionEvent.ACTION_DOWN:
+                    mHasPerformedLongPress = false;
+
+                    if (performButtonActionOnTouchDown(event)) {
+                        break;
+                    }
+
+                    // Walk up the hierarchy to determine if we're inside a scrolling container.
+                    boolean isInScrollingContainer = isInScrollingContainer();
+
+                    // For views inside a scrolling container, delay the pressed feedback for
+                    // a short period in case this is a scroll.
+                    if (isInScrollingContainer) {
+                        mPrivateFlags |= PFLAG_PREPRESSED;
+                        if (mPendingCheckForTap == null) {
+                            mPendingCheckForTap = new CheckForTap();
+                        }
+                        mPendingCheckForTap.x = event.getX();
+                        mPendingCheckForTap.y = event.getY();
+                        postDelayed(mPendingCheckForTap, ViewConfiguration.getTapTimeout());
+                    } else {
+                        // Not inside a scrolling container, so show the feedback right away
+                        setPressed(true, x, y);
+                        checkForLongClick(0, x, y);
+                    }
+                    break;
+
+                case MotionEvent.ACTION_CANCEL:
+                    setPressed(false);
+                    removeTapCallback();
+                    removeLongPressCallback();
+                    mInContextButtonPress = false;
+                    mHasPerformedLongPress = false;
+                    mIgnoreNextUpEvent = false;
+                    break;
+
+                case MotionEvent.ACTION_MOVE:
+                    drawableHotspotChanged(x, y);
+
+                    // Be lenient about moving outside of buttons
+                    if (!pointInView(x, y, mTouchSlop)) {
+                        // Outside button
+                        removeTapCallback();
+                        if ((mPrivateFlags & PFLAG_PRESSED) != 0) {
+                            // Remove any future long press/tap checks
+                            removeLongPressCallback();
+
+                            setPressed(false);
+                        }
+                    }
+                    break;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+```
