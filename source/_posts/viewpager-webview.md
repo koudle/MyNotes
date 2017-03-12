@@ -434,7 +434,6 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
 
 * 2、第二步，要对事件进行分发，如果viewgroup有子view，则按照z-order顺序分发事件，首先判断事件的坐标在不在这个view里面，若是才执行子view的dispatchTouchEvent的方法，``若这个方法返回值为true``，就是有子view消费了此事件，则继续遍历（这里虽然用链表来存储接受事件的view，但是这个view每次应该只有一个，因为同一个事件只能一个view来消费，这里还需探讨？），返回true;``若这个方法返回值为false``，则一直遍历完所有的子view，最后返回false。
 
-* 3、
 
 ### View
 view这里的代码就少很多
