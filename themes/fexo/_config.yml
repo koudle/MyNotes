@@ -199,6 +199,10 @@ project:
     url: https://github.com/koudle/FloatingLayer
     intro: Android上不需要权限就开启悬浮窗的功能
   - type: personal
+    name: ThreeInfiniteViewPager
+    url: https://github.com/koudle/ThreeInfiniteViewPager
+    intro: 只用三个view实现无限循环的viewpager
+  - type: personal
     name: NavigationBar
     url: https://github.com/koudle/NavigationBar
     intro: 底部导航栏，逻辑抽象出来的一个库
