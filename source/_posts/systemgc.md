@@ -1,7 +1,7 @@
 ---
-title: systemgc
-categories:
-tags:
+title:  需不需要手动调用System.gc()
+categories: Android
+tags: Android
 ---
 ## 导语
 曾几何时，我们一直纠结于到底要不要手动调用System.gc()，有的人说这样调用太丑陋，完全没必要，JVM会帮我们处理好的，有的人说可以调用，这样可以及时释放内存，现在可以明确的告诉你，在Android5.0及以上手动调用System.gc()完全没必要，因为你调了也完全触发不了gc，为什么会这样说呢？
